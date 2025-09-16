@@ -8,12 +8,15 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import hashlib
 
 from app.cards import router as cards_router
+from app.money_transfer import router as money_transfer_router
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app = FastAPI()
 app.include_router(cards_router)
+app.include_router(money_transfer_router)
+
 
 
 # User schema for registration
@@ -30,6 +33,10 @@ class CardCreate(BaseModel):
 class AccountCreate(BaseModel):
     initial_balance: float = 0.0
 
+class TransferCreate(BaseModel):
+    from_account_id: int
+    to_account_id: int
+    amount: float
 
 @app.on_event("startup")
 def startup():
@@ -92,3 +99,74 @@ def list_accounts(username: str = Security(get_current_user)):
     accounts = cursor.fetchall()
     conn.close()
     return {"accounts": [{"id": acc["id"], "balance": acc["balance"]} for acc in accounts]}
+
+@app.post("/cards")
+def create_card(card: CardCreate, username: str = Security(get_current_user)):
+    conn = get_db()
+    cursor = conn.cursor()
+    # Verify ownership of account
+    cursor.execute(
+        "SELECT a.id FROM accounts a JOIN users u ON a.user_id = u.id WHERE a.id = ? AND u.username = ?",
+        (card.account_id, username)
+    )
+    account = cursor.fetchone()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found or unauthorized")
+    card_number = generate_card_number()
+    try:
+        cursor.execute(
+            "INSERT INTO cards (account_id, card_number, card_type, expiry) VALUES (?, ?, ?, ?)",
+            (card.account_id, card_number, card.card_type, card.expiry)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Card number generation conflict, try again")
+    finally:
+        conn.close()
+    return {"message": "Card created successfully", "card_number": card_number}
+
+@app.post("/transfers")
+def transfer_money(transfer: TransferCreate, username: str = Security(get_current_user)):
+    if transfer.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    if transfer.from_account_id == transfer.to_account_id:
+        raise HTTPException(status_code=400, detail="Cannot transfer to the same account")
+    conn = get_db()
+    cursor = conn.cursor()
+    # Verify ownership of source account
+    cursor.execute(
+        "SELECT balance FROM accounts a JOIN users u ON a.user_id = u.id WHERE a.id = ? AND u.username = ?",
+        (transfer.from_account_id, username)
+    )
+    from_acc = cursor.fetchone()
+    if not from_acc:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Source account not found or unauthorized")
+    if from_acc["balance"] < transfer.amount:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Insufficient funds in source account")
+    # Verify target account exists
+    cursor.execute("SELECT balance FROM accounts WHERE id = ?", (transfer.to_account_id,))
+    to_acc = cursor.fetchone()
+    if not to_acc:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Target account not found")
+    # Perform transfer within a transaction
+    new_from_balance = from_acc["balance"] - transfer.amount
+    new_to_balance = to_acc["balance"] + transfer.amount
+    try:
+        cursor.execute("BEGIN")
+        cursor.execute("UPDATE accounts SET balance = ? WHERE id = ?", (new_from_balance, transfer.from_account_id))
+        cursor.execute("INSERT INTO transactions (account_id, type, amount) VALUES (?, ?, ?)",
+                       (transfer.from_account_id, "transfer", -transfer.amount))
+        cursor.execute("UPDATE accounts SET balance = ? WHERE id = ?", (new_to_balance, transfer.to_account_id))
+        cursor.execute("INSERT INTO transactions (account_id, type, amount) VALUES (?, ?, ?)",
+                       (transfer.to_account_id, "transfer", transfer.amount))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="Transfer failed due to server error")
+    finally:
+        conn.close()
+    return {"message": "Transfer successful"}
