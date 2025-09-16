@@ -133,12 +133,13 @@ def create_card(card: CardCreate, username: str = Security(get_current_user)):
             (card.account_id, card_number, card.card_type, card.expiry)
         )
         conn.commit()
+        new_card_id = cursor.lastrowid
     except sqlite3.IntegrityError:
         conn.close()
         raise HTTPException(status_code=400, detail="Card number generation conflict, try again")
     finally:
         conn.close()
-    return {"message": "Card created successfully", "card_number": card_number}
+    return {"message": "Card created successfully", "card_number": card_number, "id": new_card_id}
 
 @app.post("/transfers")
 def transfer_money(transfer: TransferCreate, username: str = Security(get_current_user)):
