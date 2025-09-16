@@ -24,6 +24,15 @@ app/
 ├── money_transfer.py    # External transfer functionality
 └── bank.db              # SQLite database (created automatically)
 requirements.txt
+tests/
+└── test_bank.db
+└── conftest.py
+└── user_flow.py
+└── test_auth.py
+└── test_cards.py
+└── test_statements.py
+└── test_transfer.py
+README.md                # All required README files
 ```
 
 ## Prerequisites
