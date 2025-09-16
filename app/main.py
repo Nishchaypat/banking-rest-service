@@ -205,3 +205,73 @@ def get_statements(account_id: int, username: str = Security(get_current_user)):
     transactions = cursor.fetchall()
     conn.close()
     return {"statements": [{"type": t["type"], "amount": t["amount"], "timestamp": t["timestamp"]} for t in transactions]}
+
+@app.post("/transactions")
+def create_transaction(transaction: TransactionCreate, username: str = Security(get_current_user)):
+    if transaction.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # Verify account ownership (fully qualify column)
+        cursor.execute(
+            "SELECT a.balance FROM accounts a "
+            "JOIN users u ON a.user_id = u.id "
+            "WHERE a.id = ? AND u.username = ?",
+            (transaction.account_id, username)
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Account not found or unauthorized")
+        current_balance = row["balance"]
+        new_balance = current_balance
+        if transaction.type == "deposit":
+            new_balance += transaction.amount
+        elif transaction.type == "withdrawal":
+            if current_balance < transaction.amount:
+                raise HTTPException(status_code=400, detail="Insufficient funds")
+            new_balance -= transaction.amount
+        else:
+            raise HTTPException(status_code=400, detail="Invalid transaction type")
+        # Update balance and insert transaction
+        cursor.execute("UPDATE accounts SET balance = ? WHERE id = ?", (new_balance, transaction.account_id))
+        cursor.execute(
+            "INSERT INTO transactions (account_id, type, amount) VALUES (?, ?, ?)",
+            (transaction.account_id, transaction.type, transaction.amount)
+        )
+        conn.commit()
+        return {"message": f"{transaction.type.capitalize()} successful", "new_balance": new_balance}
+    finally:
+        conn.close()
+
+@app.get("/accounts/{account_id}/transactions")
+def list_transactions(account_id: int, username: str = Security(get_current_user)):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        # Verify account belongs to the user (fully qualify columns)
+        cursor.execute(
+            "SELECT a.id FROM accounts a "
+            "JOIN users u ON a.user_id = u.id "
+            "WHERE a.id = ? AND u.username = ?",
+            (account_id, username)
+        )
+        account = cursor.fetchone()
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found or unauthorized")
+        # Fetch transactions for that account (fully qualify all columns)
+        cursor.execute(
+            "SELECT transactions.id, transactions.type, transactions.amount, transactions.timestamp "
+            "FROM transactions WHERE transactions.account_id = ? "
+            "ORDER BY transactions.timestamp DESC",
+            (account_id,)
+        )
+        txns = cursor.fetchall()
+        return {
+            "transactions": [
+                {"id": t["id"], "type": t["type"], "amount": t["amount"], "timestamp": t["timestamp"]}
+                for t in txns
+            ]
+        }
+    finally:
+        conn.close()
