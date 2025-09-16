@@ -6,7 +6,7 @@ from app.auth import authenticate_user, create_access_token, get_current_user
 from fastapi import Security
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import hashlib
-
+import random
 from app.cards import router as cards_router
 from app.money_transfer import router as money_transfer_router
 
@@ -99,6 +99,11 @@ def list_accounts(username: str = Security(get_current_user)):
     accounts = cursor.fetchall()
     conn.close()
     return {"accounts": [{"id": acc["id"], "balance": acc["balance"]} for acc in accounts]}
+
+def generate_card_number() -> str:
+    # Generate a simple random 16-digit card number (unsafe for real use)
+    return ''.join(str(random.randint(0, 9)) for _ in range(16))
+
 
 @app.post("/cards")
 def create_card(card: CardCreate, username: str = Security(get_current_user)):
