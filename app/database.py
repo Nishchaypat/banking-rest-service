@@ -1,7 +1,8 @@
 import sqlite3
 from sqlite3 import Connection
+import os
 
-DATABASE = "bank.db"
+DATABASE = os.getenv("DATABASE_PATH", "bank.db")        # Making a seperate database for testing and dev
 
 def get_db() -> Connection:
     conn = sqlite3.connect(DATABASE)
