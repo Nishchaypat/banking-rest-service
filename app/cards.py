@@ -11,6 +11,25 @@ class CardUpdateStatus(BaseModel):
 class CardPINUpdate(BaseModel):
     pin: str  # New PIN - store hashed in real apps
 
+@router.get("/")
+def list_cards(username: str = Security(get_current_user)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT c.id, c.card_number, c.card_type, c.expiry, c.status
+        FROM cards c
+        JOIN accounts a ON c.account_id = a.id
+        JOIN users u ON a.user_id = u.id
+        WHERE u.username = ?
+    """, (username,))
+    cards = cursor.fetchall()
+    conn.close()
+    # Assuming your cursor returns rows as dict-like objects
+    return {"cards": [
+        {"id": c["id"], "card_number": c["card_number"], "card_type": c["card_type"], "expiry": c["expiry"], "status": c["status"]}
+        for c in cards
+    ]}
+
 @router.delete("/{card_id}")
 def delete_card(card_id: str, username: str = Security(get_current_user)):
     conn = get_db()
