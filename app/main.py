@@ -7,15 +7,19 @@ from fastapi import Security
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import hashlib
 import random
+from datetime import datetime, timedelta
+
 from app.cards import router as cards_router
 from app.money_transfer import router as money_transfer_router
-
+from app.statements import router as statements_router
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app = FastAPI()
 app.include_router(cards_router)
 app.include_router(money_transfer_router)
+app.include_router(statements_router)
+
 
 
 
@@ -36,6 +40,11 @@ class AccountCreate(BaseModel):
 class TransferCreate(BaseModel):
     from_account_id: int
     to_account_id: int
+    amount: float
+
+class TransactionCreate(BaseModel):
+    account_id: int
+    type: str  # 'deposit' or 'withdrawal'
     amount: float
 
 @app.on_event("startup")
@@ -175,3 +184,24 @@ def transfer_money(transfer: TransferCreate, username: str = Security(get_curren
     finally:
         conn.close()
     return {"message": "Transfer successful"}
+
+@app.get("/statements/{account_id}")
+def get_statements(account_id: int, username: str = Security(get_current_user)):
+    conn = get_db()
+    cursor = conn.cursor()
+    # Confirm account ownership
+    cursor.execute(
+        "SELECT a.id FROM accounts a JOIN users u ON a.user_id = u.id WHERE a.id = ? AND u.username = ?",
+        (account_id, username)
+    )
+    account = cursor.fetchone()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found or unauthorized")
+    # Fetch transaction statements
+    cursor.execute(
+        "SELECT type, amount, timestamp FROM transactions WHERE account_id = ? ORDER BY timestamp DESC",
+        (account_id,)
+    )
+    transactions = cursor.fetchall()
+    conn.close()
+    return {"statements": [{"type": t["type"], "amount": t["amount"], "timestamp": t["timestamp"]} for t in transactions]}
