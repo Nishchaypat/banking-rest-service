@@ -273,9 +273,9 @@ All endpoints except `/signup` and `/token` require JWT authentication. Include 
 Authorization: Bearer <your_jwt_token>
 ```
 
-Tokens expire after 30 minutes and need to be refreshed by logging in again.
+Note: Tokens expire after 30 minutes and need to be refreshed by logging in again.
 
-## Development
+## Project Planning: https://github.com/users/Nishchaypat/projects/5
 
 ### Running Tests
 Refer the Test README.md
