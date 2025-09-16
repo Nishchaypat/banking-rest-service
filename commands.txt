@@ -1,0 +1,9 @@
+(base) npatel237@EMSFRWQMCXX53 banking-rest-service % curl -X POST "http://localhost:8000/signup" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"npatel","password":"12345678","full_name":"Nishchay"}'
+{"message":"User created successfully"}%  
+
+(base) npatel237@EMSFRWQMCXX53 banking-rest-service % curl -X POST "http://localhost:8000/token" \ 
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=npatel&password=12345678"
+{"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJucGF0ZWwiLCJleHAiOjE3NTc5OTQzODl9.pCZFCfN5L9sWI4fYf3LwhYmEY8NFQM14x0b_7oN0acU","token_type":"bearer"}%    
